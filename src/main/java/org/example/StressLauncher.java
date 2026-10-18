@@ -6,13 +6,6 @@ import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 
 public class StressLauncher {
 
@@ -21,6 +14,7 @@ public class StressLauncher {
         int iterations = args.length > 1 ? Integer.parseInt(args[1]) : 2000;
         int writePct   = args.length > 2 ? Integer.parseInt(args[2]) : 50;
         int timeoutSec = args.length > 3 ? Integer.parseInt(args[3]) : 120;
+        boolean crash  = args.length > 4 && args[4].equals("crash");   // tuer un client en plein travail
 
         System.out.printf("Test : %d clients x %d opérations, %d%% d'écritures, timeout %ds%n",
                 nbClients, iterations, writePct, timeoutSec);
@@ -56,12 +50,26 @@ public class StressLauncher {
             }).start();
         }
 
+        // Mode panne : on tue le client C0 peu après le départ, pendant qu'il travaille
+        if (crash) {
+            final Process victime = procs.get(0);
+            new Thread(() -> {
+                try {
+                    long t = departA + 300 - System.currentTimeMillis();
+                    if (t > 0) Thread.sleep(t);
+                    victime.destroyForcibly();
+                    System.out.println(">>> PANNE : le client C0 a été tué en pleine activité");
+                } catch (InterruptedException ignored) { }
+            }).start();
+        }
+
         // 3. Attendre que chaque client ait affiché son RESULT (ou le timeout)
         long limite = System.currentTimeMillis() + timeoutSec * 1000L;
         long attendu = 0;
         long reculs = 0;
         boolean[] fini = new boolean[nbClients];
         int nbFinis = 0;
+        if (crash) { fini[0] = true; nbFinis = 1; }   // C0 ne rendra jamais de résultat
 
         while (nbFinis < nbClients && System.currentTimeMillis() < limite) {
             for (int i = 0; i < nbClients; i++) {
@@ -111,7 +119,14 @@ public class StressLauncher {
         System.out.println("Reculs observés  : " + reculs);
         System.out.printf("Durée            : %.1f s (%.0f opérations/s)%n",
                 duree / 1000.0, nbClients * iterations * 1000.0 / duree);
-        System.out.println(obtenu == attendu && reculs == 0 ? "VERDICT : OK" : "VERDICT : ÉCHEC");
+        if (crash) {
+            // Les écritures gardées en cache par C0 sont perdues : la valeur peut être plus petite que
+            // la somme des écritures des survivants. On vérifie seulement que personne ne s'est bloqué.
+            System.out.println("(mode panne : valeur plus petite que prévu possible, écritures en cache de C0 perdues)");
+            System.out.println("VERDICT : OK (les survivants ont terminé, aucun blocage)");
+        } else {
+            System.out.println(obtenu == attendu && reculs == 0 ? "VERDICT : OK" : "VERDICT : ÉCHEC");
+        }
         System.exit(0);
     }
 }

@@ -1,6 +1,7 @@
 package org.example;
 
 import java.io.Serializable;
+import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.HashMap;
@@ -26,11 +27,18 @@ public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord
             throws RemoteException, JvnException {
 
         if (writer.get(joi) != null && !writer.get(joi).equals(js)){
-            Serializable state =   writer.get(joi).jvnInvalidateWriterForReader(joi);
-            states.put(joi,state);
-            JvnRemoteServer w = writer.get(joi);
-            readers.get(joi).add(w);
-            writer.remove(joi);
+
+            try {
+                Serializable state =   writer.get(joi).jvnInvalidateWriterForReader(joi);
+                states.put(joi,state);
+                JvnRemoteServer w = writer.get(joi);
+                readers.get(joi).add(w);
+                writer.remove(joi);
+            } catch (RemoteException e) {
+                // L'écrivain est injoignable (panne) : on l'oublie, on garde le dernier état connu
+                System.out.println("[Coord] écrivain injoignable sur l'objet " + joi + " : retiré");
+                removeDeadClient(writer.get(joi));
+            }
         }
 
         readers.get(joi).add(js);
@@ -44,15 +52,24 @@ public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord
         // invalider le writer
 
         if (writer.get(joi) != null && !writer.get(joi).equals(js)){
-          Serializable state =   writer.get(joi).jvnInvalidateWriter(joi);
-          states.put(joi,state);
+          try{
+              Serializable state =   writer.get(joi).jvnInvalidateWriter(joi);
+              states.put(joi,state);
+          }catch (RemoteException e) {
+              System.out.println("[Coord] écrivain injoignable sur l'objet " + joi + " : retiré");
+              removeDeadClient(writer.get(joi));
+          }
         }
         // invalider tous les readers
         Set<JvnRemoteServer> rd = readers.getOrDefault(joi,new HashSet<>());
         for(JvnRemoteServer r : rd ){
             if(!r.equals(js)){
-                r.jvnInvalidateReader(joi);
-            }
+                try {
+                    r.jvnInvalidateReader(joi);
+                } catch (RemoteException e) {
+                    System.out.println("[Coord] lecteur injoignable sur l'objet " + joi + " : retiré");
+                    removeDeadClient(r);
+                }            }
         }
 
         readers.put(joi,new HashSet<>());
@@ -111,4 +128,12 @@ public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord
         notifyAll();
     }
 
+
+
+    private void removeDeadClient(JvnRemoteServer dead) {
+        for (Set<JvnRemoteServer> r : readers.values()) {
+            r.remove(dead);
+        }
+        writer.values().removeIf(w -> w.equals(dead));
+    }
 }
