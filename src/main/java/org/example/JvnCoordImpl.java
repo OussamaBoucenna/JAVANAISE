@@ -61,14 +61,7 @@ public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord
         return states.get(joi);
     }
 
-   /* public synchronized void jvnUnLock(int joi, Serializable state, JvnRemoteServer js)  throws RemoteException, JvnException  {
-        if (js.equals(writer.get(joi))) {
-            states.put(joi, state);
-            writer.remove(joi);
-        }
-        readers.get(joi).remove(js);
-        notifyAll();
-    } */
+
 
     public synchronized int jvnGetObjectId() throws RemoteException, JvnException {
         return nextId++;
@@ -97,6 +90,20 @@ public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord
 
     public synchronized void jvnTerminate(JvnRemoteServer js)
             throws RemoteException, JvnException {
+
+        // 1. Si ce client est l'écrivain d'un objet, récupérer sa dernière valeur AVANT de l'oublier
+        for (Map.Entry<Integer, JvnRemoteServer> e : writer.entrySet()) {
+            if (e.getValue().equals(js)) {
+                try {
+                    Serializable state = js.jvnInvalidateWriter(e.getKey());
+                    states.put(e.getKey(), state);
+                } catch (RemoteException | JvnException ex) {
+                    // client injoignable : on garde le dernier état connu et on continue le nettoyage
+                }
+            }
+        }
+
+        // 2. Ensuite seulement, l'oublier (comme avant)
         for (Set<JvnRemoteServer> r : readers.values()) {
             r.remove(js);
         }

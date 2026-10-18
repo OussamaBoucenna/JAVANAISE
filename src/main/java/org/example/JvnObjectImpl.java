@@ -10,6 +10,7 @@ public class JvnObjectImpl implements JvnObject {
     private final int id;
     private Serializable sharedObject;
     private transient LockState lock;
+    private transient LockState pending;   // demande en cours auprès du coordinateur
 
     public JvnObjectImpl(int id, Serializable o) {
         this.id = id;
@@ -18,38 +19,60 @@ public class JvnObjectImpl implements JvnObject {
     }
 
     void resetLock() {
+        pending = null ;
         lock = LockState.NL;
     }
 
-    public synchronized void jvnLockRead() throws JvnException {
-        switch (lock) {
-            case NL -> {
-                Serializable s = JvnServerImpl.jvnGetServer().jvnLockRead(id);
-                if (s != null) sharedObject = s;
-                setLock(LockState.R, "Appel Coordinateur");
-               // lock = LockState.R;
+
+    public void jvnLockRead() throws JvnException {
+        synchronized (this) {
+            switch (lock) {
+                case RC -> { setLock(LockState.R,   "cache, pas de réseau"); return; }
+                case WC -> { setLock(LockState.RWC, "cache, pas de réseau"); return; }
+                case NL -> pending = LockState.R;               // le "post-it"
+                default -> throw new JvnException(
+                        "lockRead: lock already held on object " + id + " (state " + lock + ")");
             }
-            case RC -> /* lock = LockState.R */ setLock(LockState.R, "cache, pas de réseau") ;
-            case WC -> /* lock = LockState.RWC */ setLock(LockState.RWC, "cache, pas de réseau");
-            default -> throw new JvnException(
-                    "lockRead: lock already held on object " + id + " (state " + lock + ")");
+        }
+        Serializable s;
+        try {
+            s = JvnServerImpl.jvnGetServer().jvnLockRead(id);
+        } catch (JvnException | RuntimeException e) {
+            synchronized (this) { pending = null; notifyAll(); }
+            throw e;
+        }
+        synchronized (this) {
+            if (s != null) sharedObject = s;
+            setLock(LockState.R, "Appel Coordinateur");
+            pending = null;                                     // on retire le post-it
+            notifyAll();                                        // réveille les invalidations en attente
         }
     }
 
-    public synchronized void jvnLockWrite() throws JvnException {
-        switch (lock) {
-            case NL, RC -> {
-                // Une lecture en cache ne suffit pas pour écrire : coordinateur
-                Serializable s = JvnServerImpl.jvnGetServer().jvnLockWrite(id);
-                if (s != null) sharedObject = s;
-               // lock = LockState.W;
-                setLock(LockState.W, "Appel Coordinateur");
+    public void jvnLockWrite() throws JvnException {
+        synchronized (this) {
+            switch (lock) {
+                case WC -> { setLock(LockState.W, "cache, pas de réseau"); return; }
+                case NL, RC -> pending = LockState.W;
+                default -> throw new JvnException(
+                        "lockWrite: lock already held on object " + id + " (state " + lock + ")");
             }
-            case WC -> /*lock = LockState.W*/ setLock(LockState.W, "cache, pas de réseau");   // écriture en cache : pas de réseau
-            default -> throw new JvnException(
-                    "lockWrite: lock already held on object " + id + " (state " + lock + ")");
+        }
+        Serializable s;
+        try {
+            s = JvnServerImpl.jvnGetServer().jvnLockWrite(id);
+        } catch (JvnException | RuntimeException e) {
+            synchronized (this) { pending = null; notifyAll(); }
+            throw e;
+        }
+        synchronized (this) {
+            if (s != null) sharedObject = s;
+            setLock(LockState.W, "Appel Coordinateur");
+            pending = null;
+            notifyAll();
         }
     }
+
 
     public synchronized void jvnUnLock() throws JvnException {
         switch (lock) {
@@ -73,8 +96,7 @@ public class JvnObjectImpl implements JvnObject {
     @Override
     public synchronized void jvnInvalidateReader() throws JvnException {
         // Lecture en cours : on attend le unLock de l'application (R -> RC)
-        while (lock == LockState.R) {
-            System.out.println("  [Objet " + id + "] invalidateReader : attente du unlock...");
+        while (lock == LockState.R  || pending == LockState.R) {
             try {
                 wait();
             } catch (InterruptedException e) {
@@ -86,8 +108,8 @@ public class JvnObjectImpl implements JvnObject {
 
     @Override
     public synchronized Serializable jvnInvalidateWriter() throws JvnException {
-        while (lock == LockState.W || lock == LockState.RWC) {
-            System.out.println("  [Objet " + id + "] invalidateWriter : attente du unlock...");
+        while (lock == LockState.W || lock == LockState.RWC  || pending == LockState.W) {
+           // System.out.println("  [Objet " + id + "] invalidateWriter : attente du unlock...");
             try {
                 wait();
             } catch (InterruptedException e) {
@@ -100,8 +122,8 @@ public class JvnObjectImpl implements JvnObject {
 
     @Override
     public synchronized Serializable jvnInvalidateWriterForReader() throws JvnException {
-        while (lock == LockState.W) {
-            System.out.println("  [Objet " + id + "] invalidateWriterForReader : attente du unlock...");
+        while (lock == LockState.W  || pending == LockState.W) {
+          //  System.out.println("  [Objet " + id + "] invalidateWriterForReader : attente du unlock...");
             try {
                 wait();
             } catch (InterruptedException e) {
