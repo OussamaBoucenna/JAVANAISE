@@ -118,7 +118,7 @@ public class JvnObjectImpl implements JvnObject {
 
 
     private void setLock(LockState nouveau, String raison) {
-        System.out.println("  [Objet " + id + "] " + lock + " -> " + nouveau + "   (" + raison + ")");
+       // System.out.println("  [Objet " + id + "] " + lock + " -> " + nouveau + "   (" + raison + ")");
         lock = nouveau;
     }
 }
