@@ -1,0 +1,107 @@
+package org.example;
+
+import java.io.Serializable;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord {
+
+    private int nextId = 0;
+    private final Map<String, Integer> names = new HashMap<>();                 // nom -> id
+    private final Map<Integer, JvnObject> objects = new ConcurrentHashMap<>();            // id -> JvnObject
+    private final Map<Integer, Serializable> states = new HashMap<>();          // id -> dernier état validé
+    private final Map<Integer, Set<JvnRemoteServer>> readers = new HashMap<>(); // id -> lecteurs
+    private final Map<Integer, JvnRemoteServer> writer = new HashMap<>();       // id -> écrivain (ou absent)
+
+    protected JvnCoordImpl() throws RemoteException {
+    }
+
+
+    public synchronized Serializable jvnLockRead(int joi, JvnRemoteServer js)
+            throws RemoteException, JvnException {
+
+        if (writer.get(joi) != null && !writer.get(joi).equals(js)){
+            Serializable state =   writer.get(joi).jvnInvalidateWriterForReader(joi);
+            states.put(joi,state);
+            JvnRemoteServer w = writer.get(joi);
+            readers.get(joi).add(w);
+            writer.remove(joi);
+        }
+
+        readers.get(joi).add(js);
+        return states.get(joi);
+    }
+
+
+    public synchronized Serializable jvnLockWrite(int joi, JvnRemoteServer js)
+            throws RemoteException, JvnException {
+
+        // invalider le writer
+
+        if (writer.get(joi) != null && !writer.get(joi).equals(js)){
+          Serializable state =   writer.get(joi).jvnInvalidateWriter(joi);
+          states.put(joi,state);
+        }
+        // invalider tous les readers
+        Set<JvnRemoteServer> rd = readers.getOrDefault(joi,new HashSet<>());
+        for(JvnRemoteServer r : rd ){
+            if(!r.equals(js)){
+                r.jvnInvalidateReader(joi);
+            }
+        }
+
+        readers.put(joi,new HashSet<>());
+        writer.put(joi,js);
+
+        return states.get(joi);
+    }
+
+   /* public synchronized void jvnUnLock(int joi, Serializable state, JvnRemoteServer js)  throws RemoteException, JvnException  {
+        if (js.equals(writer.get(joi))) {
+            states.put(joi, state);
+            writer.remove(joi);
+        }
+        readers.get(joi).remove(js);
+        notifyAll();
+    } */
+
+    public synchronized int jvnGetObjectId() throws RemoteException, JvnException {
+        return nextId++;
+    }
+
+    public synchronized void jvnRegisterObject(String jon, JvnObject jo, JvnRemoteServer js)
+            throws RemoteException, JvnException {
+        if (names.containsKey(jon)) {
+            throw new JvnException("Name already registered: " + jon);
+        }
+        int id = jo.jvnGetObjectId();
+        names.put(jon, id);
+        objects.put(id, jo);
+        states.put(id, jo.jvnGetSharedObject());
+        readers.putIfAbsent(id, new HashSet<>());
+    }
+
+    public synchronized JvnObject jvnLookupObject(String jon, JvnRemoteServer js)
+            throws RemoteException, JvnException {
+        Integer id = names.get(jon);
+        if (id == null) {
+            return null;
+        }
+        return objects.get(id);
+    }
+
+    public synchronized void jvnTerminate(JvnRemoteServer js)
+            throws RemoteException, JvnException {
+        for (Set<JvnRemoteServer> r : readers.values()) {
+            r.remove(js);
+        }
+        writer.values().removeIf(w -> w.equals(js));
+        notifyAll();
+    }
+
+}
