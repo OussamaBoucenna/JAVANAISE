@@ -23,20 +23,32 @@ public class HandlerProxy implements InvocationHandler {
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        System.out.println("invocation call ");
-        // 1. Verrou AVANT le try : s'il échoue, on ne passe jamais par le finally
-        if (method.getName().equals("increment")) {
+
+        boolean write = method.isAnnotationPresent(JvnWrite.class);
+        boolean read = method.isAnnotationPresent(JvnRead.class);
+
+
+        if (!write && !read) {
+            try {
+                Object target = realObject.jvnGetSharedObject();
+                return method.invoke(target, args);
+            }catch (InvocationTargetException e){
+                throw e.getCause();
+            }
+        }
+
+
+
+        if (write) {
             realObject.jvnLockWrite();
-            System.out.println("incrementation");
         } else {
             realObject.jvnLockRead();
-            System.out.println("read");
         }
+
 
         try {
             Object target = realObject.jvnGetSharedObject();
             return method.invoke(target, args);
-
         } catch (InvocationTargetException e) {
             throw e.getCause();
 
