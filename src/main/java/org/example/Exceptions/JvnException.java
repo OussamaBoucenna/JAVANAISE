@@ -1,4 +1,4 @@
-package org.example;
+package org.example.Exceptions;
 
 
 public class JvnException extends Exception {

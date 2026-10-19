@@ -1,9 +1,13 @@
-package org.example;
+package org.example.Stress;
 
+
+import org.example.Proxy.HandlerProxy;
+import org.example.Services.JvnServerImpl;
+import org.example.interfaces.ICounter;
+import org.example.interfaces.JvnObject;
 
 import java.util.Random;
 
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**

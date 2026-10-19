@@ -1,7 +1,11 @@
-package org.example;
+package org.example.Services;
+
+import org.example.Exceptions.JvnException;
+import org.example.interfaces.JvnObject;
+import org.example.interfaces.JvnRemoteCoord;
+import org.example.interfaces.JvnRemoteServer;
 
 import java.io.Serializable;
-import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.HashMap;
@@ -19,7 +23,7 @@ public class JvnCoordImpl  extends UnicastRemoteObject implements JvnRemoteCoord
     private final Map<Integer, Set<JvnRemoteServer>> readers = new HashMap<>(); // id -> lecteurs
     private final Map<Integer, JvnRemoteServer> writer = new HashMap<>();       // id -> écrivain (ou absent)
 
-    protected JvnCoordImpl() throws RemoteException {
+    public JvnCoordImpl() throws RemoteException {
     }
 
 

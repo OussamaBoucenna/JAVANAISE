@@ -1,7 +1,9 @@
-package org.example;
+package org.example.interfaces;
 
 
 
+
+import org.example.Exceptions.JvnException;
 
 import java.io.*;
 

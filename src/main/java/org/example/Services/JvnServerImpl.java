@@ -1,12 +1,17 @@
-package org.example;
+package org.example.Services;
 
+
+import org.example.Exceptions.JvnException;
+import org.example.interfaces.JvnLocalServer;
+import org.example.interfaces.JvnObject;
+import org.example.interfaces.JvnRemoteCoord;
+import org.example.interfaces.JvnRemoteServer;
 
 import java.io.Serializable;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.HashMap;
 import java.util.Map;
 
 public class JvnServerImpl extends UnicastRemoteObject
@@ -14,7 +19,8 @@ public class JvnServerImpl extends UnicastRemoteObject
 
     private static JvnServerImpl js = null;
     private final JvnRemoteCoord coord;
-    private final Map<Integer, JvnObject> objects = new HashMap<>();
+   // private final Map<Integer, JvnObject> objects = new HashMap<>();
+   private final Map<Integer, JvnObject> objects =  new java.util.concurrent.ConcurrentHashMap<>();
 
     private JvnServerImpl() throws Exception {
         super();

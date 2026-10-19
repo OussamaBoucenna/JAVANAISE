@@ -1,6 +1,8 @@
 package org.example;
 
 
+import org.example.Services.JvnCoordImpl;
+
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 

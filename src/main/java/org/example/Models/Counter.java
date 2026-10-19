@@ -1,5 +1,7 @@
-package org.example;
+package org.example.Models;
 
+
+import org.example.interfaces.ICounter;
 
 import java.io.Serializable;
 

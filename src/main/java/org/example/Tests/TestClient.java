@@ -1,5 +1,12 @@
-package org.example;
+package org.example.Tests;
 
+
+import org.example.Exceptions.JvnException;
+import org.example.Models.Counter;
+import org.example.Proxy.HandlerProxy;
+import org.example.Services.JvnServerImpl;
+import org.example.interfaces.ICounter;
+import org.example.interfaces.JvnObject;
 
 import java.util.Scanner;
 

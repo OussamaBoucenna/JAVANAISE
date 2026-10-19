@@ -1,5 +1,9 @@
-package org.example;
+package org.example.Tests;
 
+
+import org.example.Models.Counter;
+import org.example.Services.JvnServerImpl;
+import org.example.interfaces.JvnObject;
 
 import javax.swing.*;
 import java.awt.*;

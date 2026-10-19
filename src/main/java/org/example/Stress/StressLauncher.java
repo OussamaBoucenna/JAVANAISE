@@ -1,5 +1,9 @@
-package org.example;
+package org.example.Stress;
 
+
+import org.example.Models.Counter;
+import org.example.Services.JvnServerImpl;
+import org.example.interfaces.JvnObject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -33,7 +37,7 @@ public class StressLauncher {
         List<List<String>> sorties = new ArrayList<>();
 
         for (int i = 0; i < nbClients; i++) {
-            Process p = new ProcessBuilder(java, "-cp", cp, "org.example.StressWorker",
+            Process p = new ProcessBuilder(java, "-cp", cp, "org.example.Stress.StressWorker",
                     "C" + i, objName, String.valueOf(iterations),
                     String.valueOf(writePct), String.valueOf(departA))
                     .redirectErrorStream(true).start();

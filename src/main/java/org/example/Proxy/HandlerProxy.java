@@ -1,4 +1,8 @@
-package org.example;
+package org.example.Proxy;
+
+import org.example.interfaces.JvnObject;
+import org.example.interfaces.JvnRead;
+import org.example.interfaces.JvnWrite;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
