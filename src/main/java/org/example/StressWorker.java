@@ -4,14 +4,20 @@ package org.example;
 import java.util.Random;
 
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Client de stress : utilise le proxy dynamique (annotations @JvnRead / @JvnWrite),
+ * donc plus aucun jvnLockRead/jvnLockWrite/jvnUnLock manuel.
+ * Arguments : nom objet iterations writePct departA [threads=1]
+ */
 public class StressWorker {
     public static void main(String[] args) throws Exception {
-        String nom = args[0];
         String objName = args[1];
         int iterations = Integer.parseInt(args[2]);
         int writePct = Integer.parseInt(args[3]);
         long departA = Long.parseLong(args[4]);
+        int nbThreads = args.length > 5 ? Integer.parseInt(args[5]) : 1;
 
         JvnServerImpl js = JvnServerImpl.jvnGetServer();
         JvnObject jo = js.jvnLookupObject(objName);
@@ -19,39 +25,39 @@ public class StressWorker {
             System.out.println("ERREUR objet introuvable");
             System.exit(2);
         }
+        ICounter counter = (ICounter) HandlerProxy.newInstance(jo, ICounter.class);
 
         // Attendre le départ commun : tous les clients démarrent ensemble
         long attente = departA - System.currentTimeMillis();
         if (attente > 0) Thread.sleep(attente);
 
-        Random rnd = new Random();
-        int writes = 0;
-        int reculs = 0;
-        int last = -1;
+        AtomicInteger writes = new AtomicInteger();
+        AtomicInteger reculs = new AtomicInteger();
 
-        for (int i = 0; i < iterations; i++) {
-            if (rnd.nextInt(100) < writePct) {
-                jo.jvnLockWrite();
-                Counter c = (Counter) jo.jvnGetSharedObject();
-                int avant = c.read();
-                if (avant < last) reculs++;
-                c.increment();
-                last = avant + 1;
-                jo.jvnUnLock();
-                writes++;
-            } else {
-                jo.jvnLockRead();
-                int v = ((Counter) jo.jvnGetSharedObject()).read();
-                jo.jvnUnLock();
-                if (v < last) reculs++;
-                last = v;
-            }
+        Thread[] ts = new Thread[nbThreads];
+        for (int t = 0; t < nbThreads; t++) {
+            ts[t] = new Thread(() -> {
+                Random rnd = new Random();
+                int last = -1;   // dernière valeur LUE par ce thread (un compteur ne doit jamais reculer)
+                for (int i = 0; i < iterations; i++) {
+                    if (rnd.nextInt(100) < writePct) {
+                        counter.increment();          // verrou W pris/relâché par le proxy
+                        writes.incrementAndGet();
+                    } else {
+                        int v = counter.read();       // verrou R pris/relâché par le proxy
+                        if (v < last) reculs.incrementAndGet();
+                        last = v;
+                    }
+                }
+            });
+            ts[t].start();
         }
+        for (Thread t : ts) t.join();
 
-        System.out.println("RESULT " + writes + " " + reculs);
+        System.out.println("RESULT " + writes.get() + " " + reculs.get());
 
-        // Rester vivant : le lanceur lira la valeur finale, puis nous arrêtera.
-        // Pas de jvnTerminate : le coordinateur pourra encore nous invalider.
-        Thread.sleep(Long.MAX_VALUE);
+        // Le coordinateur récupère notre dernier état dans jvnTerminate avant de nous oublier
+        js.jvnTerminate();
+        System.exit(0);
     }
 }
